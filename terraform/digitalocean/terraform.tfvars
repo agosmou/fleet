@@ -8,5 +8,5 @@
 # on starts at s-2vcpu-4gb ($24) until environment can build on the
 # workstation and push (`nix copy`). DO resizes never shrink the disk.
 droplets = {
-  do1 = { size = "s-2vcpu-4gb" }
+  # do1 = { size = "s-2vcpu-4gb" }   # uncomment, `just new do1`; delete, `just down`
 }

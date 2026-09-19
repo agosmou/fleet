@@ -33,9 +33,9 @@ up:
 plan:
     cd "{{tf}}" && tofu init -input=false >/dev/null && tofu plan
 
-# Destroy every droplet in terraform.tfvars (asks before acting). Then `just forget NAME` for each
+# Destroy every droplet, its firewall and birth key (asks first); the tailnet policy stays managed. Then `just forget NAME` for each
 down:
-    cd "{{tf}}" && tofu destroy
+    cd "{{tf}}" && tofu destroy -target='digitalocean_droplet.this' -target='tailscale_tailnet_key.birth'
 
 # Replace NAME from scratch: a fresh birth key and a new droplet with the current cloud-init (asks first)
 rebirth NAME: (forget NAME)
