@@ -82,6 +82,9 @@
     state: present
     update_cache: true
     cache_valid_time: "{{ 0 if docker_repo.changed else 3600 }}"
+  # A dry run does not write the repository, so apt cannot see the
+  # packages yet; skipping here keeps `just check` clean on a fresh box.
+  when: not (ansible_check_mode and docker_repo.changed)
 
 - name: Docker's repository is patched by unattended-upgrades
   ansible.builtin.copy:
@@ -157,3 +160,4 @@
 - name: Docker answers
   ansible.builtin.command: docker compose version
   changed_when: false
+  when: not ansible_check_mode

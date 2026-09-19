@@ -102,13 +102,15 @@ status HOST:
 ping *ARGS:
     cd "{{ansible_dir}}" && ANSIBLE_BECOME=false ansible all -m ping {{ARGS}}
 
-# Dry run: who is online, then what would change (asks for the sudo password). `just check -l spectre` for one host
+# Dry run: who is online, then what would change. `just check -l spectre` for one host
 check *ARGS: online
-    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --check --diff -K {{ARGS}}
+    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --check --diff {{ARGS}}
 
-# Apply the configuration to every host, or `just apply -l NAME` for one
+# Apply the configuration to every host, or `just apply -l NAME` for one.
+# A machine that still asks for a sudo password (built by hand, never
+# converged): add -K once; roles/base then makes sudo passwordless
 apply *ARGS:
-    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --diff -K {{ARGS}}
+    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --diff {{ARGS}}
 
 # ---- User layer: ~/environment ----------------------------------------------
 

@@ -117,7 +117,7 @@ just rebirth do1        # forget + replace key and droplet with the current clou
 
 # the steady state, any machine
 just online             # which inventory hosts are on the tailnet right now, no ssh
-just check              # online, then a dry run with diff, every host (asks for the sudo password)
+just check              # online, then a dry run with diff, every host
 just check -l spectre   # one host
 just apply -l spectre   # converge it
 just env spectre        # user layer: environment's bootstrap, --target server
@@ -135,7 +135,7 @@ Removing one: delete the line, `just up`, `just forget <name>`.
 | Role        | Effect |
 |-------------|--------|
 | `tailscale` | Check only, first: connected (`Running`), online, node name is the inventory name, warns 30 days before an untagged key expires. Installs nothing: see "How a server is born" |
-| `base`      | Baseline packages, unattended security upgrades, auto-reboot at 04:00 only when a kernel update requires it, a 2 GB swapfile where a machine has none |
+| `base`      | Passwordless sudo for ag (the ssh key is the credential; validated with `visudo`), baseline packages, unattended security upgrades, auto-reboot at 04:00 only when a kernel update requires it, a 2 GB swapfile where a machine has none |
 | `ssh`       | Keys only, no root, only listed users, no X11/agent forwarding, idle sessions dropped; validated with `sshd -t` before it is written, reloaded not restarted |
 | `ufw`       | Default deny inbound. Allowed: anything over `tailscale0`, Tailscale's WireGuard port, and SSH from `lan_cidr` where a host defines one |
 | `laptop`    | Lid closed and idle never suspend; sleep targets masked. Group `laptops` only |

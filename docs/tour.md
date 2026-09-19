@@ -300,7 +300,11 @@ subject. Each has a comment at the top saying what it does and why.
   has under 30 days. Installs nothing, for a reason the comment spells
   out: if tailscaled were missing, ansible could not have reached the box
   to install it.
-- **`base/`**: baseline packages; `20auto-upgrades` turns on daily
+- **`base/`**: `/etc/sudoers.d/ag`, sudo without a password, written
+  only if `visudo -cf` accepts it (a bad sudoers file locks root out);
+  the ssh key over the tailnet is the credential on a server, so a
+  password would defend nothing and every run would stop to ask for it.
+  Then baseline packages; `20auto-upgrades` turns on daily
   unattended security updates; `52unattended-upgrades-local` (a template,
   because the reboot time is a variable) allows an automatic reboot at
   04:00 only when a kernel update needs one and removes unused kernels;

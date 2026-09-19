@@ -4,18 +4,15 @@ Short list of what is next, in order. Done items are deleted, not ticked.
 
 ## Next
 
-1. **Passwordless sudo on servers**, so `just new` asks nothing. Today
-   every ansible run asks for ag's password (`-K`) and environment's
-   bootstrap asks again on the box. On a server the only way in is the
-   ssh key over the tailnet, so the password defends nothing, and its
-   hash sits in tfstate and in the droplet's user-data where a short
-   password cracks in seconds. Change: cloud-init `users.ag.sudo:
-   "ALL=(ALL) NOPASSWD:ALL"` and no `passwd`; `roles/base` writes
-   `/etc/sudoers.d/ag` the same way (validated with `visudo -cf`) so
-   spectre converges with one last `-K`; drop `-K` from `check`/`apply`;
-   `TF_VAR_ag_passwd_hash` leaves secrets.env; `just new` runs
-   `tofu apply -auto-approve` (`up`/`down` keep asking, they can destroy).
-   Workstations (t14s, mini) keep password sudo; they are not servers.
+1. **`just new` asks nothing.** Sudo is passwordless on servers now
+   (cloud-init and `roles/base`; `-K` is gone from `check`/`apply`), so
+   what remains is `tofu apply -auto-approve` inside `just new` (`up`/
+   `down` keep asking, they can destroy). Open question: drop `passwd`
+   and `TF_VAR_ag_passwd_hash` too. The hash sits in tfstate and the
+   droplet's user-data where a short password cracks in seconds, but it
+   is also the DigitalOcean web-console fallback in "Lockout safety";
+   kept for now, on purpose. Workstations (t14s, mini) keep password
+   sudo; they are not servers.
 
 2. **Build on the workstation, push to the server** (`nix copy`), so a
    1 GB droplet is enough again and `just env` takes minutes. Today

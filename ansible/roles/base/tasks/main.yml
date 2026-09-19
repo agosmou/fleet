@@ -1,4 +1,18 @@
 ---
+# Sudo without a password for ag. On a server the only way in is the ssh
+# key over the tailnet, so the password defends nothing and only makes
+# every ansible run (and environment's bootstrap) stop to ask. Droplets
+# are born this way (cloud-init); this converges the hand-built machines.
+# The last `-K` run on such a machine is the one that writes this file.
+- name: Passwordless sudo for ag
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/ag
+    content: "ag ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+
 - name: Install baseline packages
   ansible.builtin.apt:
     name:

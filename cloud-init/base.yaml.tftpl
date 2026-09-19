@@ -12,8 +12,12 @@ users:
   - name: ag
     groups: [adm, sudo]
     shell: /bin/bash
-    # Password sudo, same as every other machine (ansible asks with -K).
-    # The hash comes from secrets.env; never the password itself.
+    # Sudo without a password: the only way in is the ssh key over the
+    # tailnet, so a password would defend nothing and ansible would have
+    # to ask for it every run (roles/base writes the same rule).
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    # The password exists for one thing: DigitalOcean's web console, the
+    # fallback when the tailnet is not reachable. Hash from secrets.env.
     lock_passwd: false
     passwd: "${passwd_hash}"
     ssh_authorized_keys:
