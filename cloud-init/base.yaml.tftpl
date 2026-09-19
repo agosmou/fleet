@@ -1,0 +1,46 @@
+#cloud-config
+# First boot of every machine, whatever provides it (a droplet, a Pi image,
+# an autoinstall USB). Rendered by terraform's templatefile(): the
+# dollar-brace and percent-brace forms are its syntax, not cloud-init's.
+#
+# Rule: only what Ansible needs to reach the box. Everything else lives in
+# ansible/roles and runs whenever you say, not once at birth.
+
+hostname: ${hostname}
+
+users:
+  - name: ag
+    groups: [adm, sudo]
+    shell: /bin/bash
+    # Password sudo, same as every other machine (ansible asks with -K).
+    # The hash comes from secrets.env; never the password itself.
+    lock_passwd: false
+    passwd: "${passwd_hash}"
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+disable_root: true
+ssh_pwauth: false
+
+package_update: true
+package_upgrade: true
+packages:
+  - ufw
+  - unattended-upgrades
+  - ca-certificates
+  - curl
+  - python3   # ansible's only requirement on the target
+
+runcmd:
+  # Firewall first: only the tailnet may reach this machine. A LAN
+  # fallback rule is added for machines that have a LAN (ansible, roles/ufw).
+  - [ufw, allow, in, "on", tailscale0]   # quoted: bare `on` is YAML for true
+  - [ufw, --force, enable]
+  # Tailscale's installer adds its apt repository and installs the package;
+  # ansible's tailscale role manages the same repository from then on.
+  - [sh, -c, "curl -fsSL https://tailscale.com/install.sh | sh"]
+  - [tailscale, up, "--auth-key=${tailscale_authkey}", "--hostname=${hostname}"]
+
+final_message: "cloud-init done after $UPTIME s; reachable as ${hostname} on the tailnet"

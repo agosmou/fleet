@@ -1,0 +1,20 @@
+// Tailnet policy, managed by terraform (tailscale.tf). Edit here, `just
+// plan`, `just up`; never in the admin console, which `just up` overwrites.
+//
+// STARTING POINT ONLY: `just acl-pull` replaces this file with the live
+// policy and imports it, so the first plan is empty. Then add tag:server
+// below if the live policy lacks it.
+{
+  // Who may assign each tag. Servers born by cloud-init carry tag:server.
+  "tagOwners": {
+    "tag:server": ["autogroup:admin"],
+  },
+
+  // Allow everything, which is Tailscale's default for a new tailnet.
+  // Tighten later, e.g. autogroup:member -> tag:server:22 only.
+  "grants": [
+    {"src": ["*"], "dst": ["*"], "ip": ["*"]},
+  ],
+
+  // Tailscale SSH stays off; OpenSSH over the tailnet is the model here.
+}

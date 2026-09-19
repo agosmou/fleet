@@ -1,0 +1,52 @@
+---
+# Tailscale is installed at birth (cloud-init) or by hand (spectre), never
+# by this role: if tailscaled were missing, ansible could not have reached
+# the box to install it. So this role only CHECKS, and it runs first
+# (site.yml pre_tasks) so a disconnected or misnamed node fails before any
+# other role touches it.
+
+- name: Read Tailscale state
+  ansible.builtin.command: tailscale status --json
+  register: ts_raw
+  changed_when: false
+  check_mode: false
+
+- name: Parse it
+  ansible.builtin.set_fact:
+    ts: "{{ ts_raw.stdout | from_json }}"
+
+# BackendState is the real test: the daemon can be active while logged
+# out ("NeedsLogin") or stopped. DNSName is "<name>.<tailnet>.ts.net.";
+# its first label must be the inventory name, or we are configuring the
+# wrong machine.
+- name: Assert connected as the right node
+  ansible.builtin.assert:
+    that:
+      - ts.BackendState == "Running"
+      - ts.Self.Online | bool
+      - (ts.Self.DNSName | split('.') | first) == inventory_hostname
+    fail_msg: >-
+      {{ inventory_hostname }}: BackendState={{ ts.BackendState }},
+      Online={{ ts.Self.Online }}, DNSName={{ ts.Self.DNSName }}.
+      Born via cloud-init? `cloud-init status --long` on the box.
+      Hand-joined? `sudo tailscale up`.
+    quiet: true
+
+# Tagged nodes (cloud-init births) never expire; hand-joined ones do. The
+# zero date is how tailscale reports "expiry disabled".
+- name: Days until key expiry
+  ansible.builtin.set_fact:
+    ts_key_days: >-
+      {{ ((ts.Self.KeyExpiry | to_datetime('%Y-%m-%dT%H:%M:%SZ')) - now(utc=true)).days }}
+  when:
+    - ts.Self.KeyExpiry is defined
+    - not ts.Self.KeyExpiry.startswith('0001-')
+
+- name: Warn when the key expires soon
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ inventory_hostname }}'s node key expires in {{ ts_key_days }} days.
+      Admin console -> machine -> Disable key expiry, or rebuild via cloud-init (tagged).
+  when:
+    - ts_key_days is defined
+    - ts_key_days | int < 30

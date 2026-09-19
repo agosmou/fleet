@@ -1,0 +1,25 @@
+# Machines at home. Hosts are addressed by tailnet name (MagicDNS), so no
+# IPs live here; ansible_host is only set when the name does not resolve.
+# Groups say what a machine IS, and playbooks/site.yml maps groups to roles.
+#
+# Anything about the LAN itself (subnets, addresses, ports) is the private
+# home-network repository's, and reaches ansible through the gitignored
+# inventory/00-local.yml (see ansible/00-local.yml.example; it lives one level up so ansible does not parse it): lan_cidr per host is
+# the subnet allowed to reach SSH directly, the fallback for a headless box
+# when Tailscale is down. Without that file, no LAN rule is written.
+all:
+  children:
+    laptops:
+      hosts:
+        spectre:
+          # lan_cidr: in 00-local.yml
+          # birth: hand. Installed from USB and joined with `sudo tailscale
+          # up` before cloud-init existed here, so its node key EXPIRES
+          # (untagged); the tailscale check warns 30 days out. Becomes a
+          # cloud-init birth if/when it is reinstalled.
+    pis:
+      hosts: {}
+      # pi4: {}
+      # pi02w: {}
+    vps:
+      hosts: {}   # populated by inventory/20-vps.yml

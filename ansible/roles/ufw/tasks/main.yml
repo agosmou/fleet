@@ -1,0 +1,41 @@
+---
+# Rules are added BEFORE the firewall is enabled so the running SSH
+# session (and the next one) is never cut off.
+
+- name: Allow SSH from the LAN
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ lan_cidr }}"
+    to_port: "22"
+    proto: tcp
+    comment: SSH from LAN
+  when: lan_cidr is defined
+
+- name: Allow everything arriving over the Tailscale interface
+  community.general.ufw:
+    rule: allow
+    interface_in: tailscale0
+    direction: in
+    comment: Tailscale (authenticated peers only)
+
+- name: Allow Tailscale's WireGuard port so peers can connect directly
+  community.general.ufw:
+    rule: allow
+    to_port: "41641"
+    proto: udp
+    comment: Tailscale WireGuard
+
+- name: Default deny incoming
+  community.general.ufw:
+    direction: incoming
+    default: deny
+
+- name: Default allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+
+- name: Enable firewall with low logging
+  community.general.ufw:
+    state: enabled
+    logging: low

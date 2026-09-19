@@ -1,0 +1,31 @@
+---
+# A laptop as a server: closing the lid, or nobody typing, must not suspend
+# it. Battery charge limits are deliberately not handled (no sysfs knob on
+# the Spectre; BIOS or nothing).
+
+- name: Ignore the lid switch and idle
+  ansible.builtin.copy:
+    dest: /etc/systemd/logind.conf.d/server.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (fleet, roles/laptop).
+      [Login]
+      HandleLidSwitch=ignore
+      HandleLidSwitchExternalPower=ignore
+      HandleLidSwitchDocked=ignore
+      IdleAction=ignore
+  notify: Restart logind
+
+# Belt and braces: even if something else asks for sleep, there is no
+# target to reach.
+- name: Mask sleep targets
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target

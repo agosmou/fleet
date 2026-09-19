@@ -1,0 +1,33 @@
+---
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - ufw
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Enable periodic package list updates and unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+- name: Configure unattended-upgrades reboot and cleanup policy
+  ansible.builtin.template:
+    src: 52unattended-upgrades-local.j2
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    mode: "0644"
+
+- name: Ensure unattended-upgrades is enabled
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    enabled: true
+    state: started

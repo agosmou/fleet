@@ -1,0 +1,25 @@
+# Secrets: tokens, keys, anything .env-shaped
+secrets.env
+*.env
+!secrets.env.example
+secrets/
+*.key
+*.pem
+.vault_pass
+
+# Terraform / OpenTofu state and plugin cache. State holds the rendered
+# user-data, auth key included.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Tooling caches and rendered previews
+.rendered/
+.direnv/
+.ansible/
+*.retry
+
+# LAN facts (home-network repository is the source)
+ansible/inventory/00-local.yml

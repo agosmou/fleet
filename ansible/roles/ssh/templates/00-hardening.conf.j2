@@ -1,0 +1,22 @@
+# Managed by Ansible (fleet). Files in sshd_config.d are read in
+# lexical order and sshd keeps the FIRST value it sees for each option,
+# so this 00- file takes precedence over Ubuntu/cloud-init defaults.
+
+# Authentication: keys only, no root.
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+AllowUsers {{ ssh_allow_users | join(' ') }}
+MaxAuthTries 4
+LoginGraceTime 30
+
+# Features this box doesn't need. TCP forwarding stays on so
+# `ssh -L 3000:localhost:3000` works for dev servers.
+X11Forwarding no
+AllowAgentForwarding no
+PermitEmptyPasswords no
+
+# Drop dead sessions.
+ClientAliveInterval 300
+ClientAliveCountMax 2

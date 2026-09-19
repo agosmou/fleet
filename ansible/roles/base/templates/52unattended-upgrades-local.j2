@@ -1,0 +1,6 @@
+// Managed by Ansible (fleet). Ubuntu's default 50unattended-upgrades
+// already selects the security pocket; this only adds housekeeping.
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ auto_reboot_time }}";

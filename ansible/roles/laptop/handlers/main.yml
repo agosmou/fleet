@@ -1,0 +1,7 @@
+---
+# Safe on a headless server: restarting logind only disturbs graphical
+# sessions, and SSH sessions are not logind seats.
+- name: Restart logind
+  ansible.builtin.systemd:
+    name: systemd-logind
+    state: restarted

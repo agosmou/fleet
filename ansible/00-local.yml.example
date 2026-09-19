@@ -1,0 +1,13 @@
+# LAN facts for the machines at home, kept out of git: copy to inventory/00-local.yml
+# (gitignored) and fill in from the home-network repository's IP plan.
+# Ansible merges every file in inventory/, so a host named here and in
+# 10-home.yml is one host with both sets of variables.
+#
+# lan_cidr: the subnet allowed to reach SSH directly (roles/ufw), the
+# fallback when Tailscale is down. Only machines with a LAN have one.
+all:
+  hosts:
+    spectre:
+      lan_cidr: 192.168.0.0/24
+    # pi4:
+    #   lan_cidr: 192.168.0.0/24

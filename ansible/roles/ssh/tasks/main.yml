@@ -1,0 +1,20 @@
+---
+- name: Install SSH hardening drop-in
+  ansible.builtin.template:
+    src: 00-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    # Refuse to write a config sshd would reject (protects against lockout).
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+
+# The hand-written predecessor of this file (spectre, 2026-09-16). sshd keeps
+# the FIRST value it reads, so 00-hardening already wins; this just removes
+# the duplicate so there is one place to look.
+- name: Remove superseded hand-written drop-in
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/99-hardening.conf
+    state: absent
+  notify: Reload ssh

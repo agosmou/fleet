@@ -1,0 +1,21 @@
+---
+# The whole fleet. Roles by what a machine is (its inventory group), not by
+# where it runs: a droplet and the laptop get the same baseline.
+- name: Baseline for every machine
+  hosts: all
+  pre_tasks:
+    # Fail fast: is this the right node, and is it actually on the tailnet?
+    - name: Tailscale check
+      ansible.builtin.import_role:
+        name: tailscale
+      become: false # `tailscale status` needs no root
+      tags: [always]
+  roles:
+    - base
+    - ssh
+    - ufw
+
+- name: Laptops used as servers
+  hosts: laptops
+  roles:
+    - laptop
