@@ -1,0 +1,8 @@
+# Defaults for every machine; override per group or host in the inventory
+# files. Lives under inventory/ because that is where ansible looks for
+# group_vars (next to the inventory source, not next to ansible.cfg).
+ansible_user: ag
+# Users allowed to log in over SSH (roles/ssh).
+ssh_allow_users: [ag]
+# unattended-upgrades may reboot at this time if a kernel update needs it.
+auto_reboot_time: "04:00"

@@ -1,6 +1,0 @@
-# Defaults for every machine; override per group or host in inventory/.
-ansible_user: ag
-# Users allowed to log in over SSH (roles/ssh).
-ssh_allow_users: [ag]
-# unattended-upgrades may reboot at this time if a kernel update needs it.
-auto_reboot_time: "04:00"

@@ -14,8 +14,7 @@
 - name: Allow everything arriving over the Tailscale interface
   community.general.ufw:
     rule: allow
-    interface_in: tailscale0
-    direction: in
+    interface_in: tailscale0   # implies inbound; `direction: in` alongside it is rejected
     comment: Tailscale (authenticated peers only)
 
 - name: Allow Tailscale's WireGuard port so peers can connect directly

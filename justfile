@@ -33,9 +33,13 @@ up:
 plan:
     cd "{{tf}}" && tofu init -input=false >/dev/null && tofu plan
 
-# Destroy every droplet in terraform.tfvars (asks before acting)
+# Destroy every droplet in terraform.tfvars (asks before acting). Then `just forget NAME` for each
 down:
     cd "{{tf}}" && tofu destroy
+
+# Replace NAME from scratch: a fresh birth key and a new droplet with the current cloud-init (asks first)
+rebirth NAME: (forget NAME)
+    cd "{{tf}}" && tofu apply -replace='tailscale_tailnet_key.birth["{{NAME}}"]' -replace='digitalocean_droplet.this["{{NAME}}"]'
 
 # ---- Tailnet: policy and birth keys -----------------------------------------
 
@@ -52,6 +56,17 @@ key NAME:
     @curl -fsS -H "Authorization: Bearer {{ts_token}}" -H "Content-Type: application/json" \
       -d '{"description":"fleet birth key for {{NAME}}","expirySeconds":3600,"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["tag:server"]}}}}' \
       "{{ts_api}}/tailnet/-/keys" | jq -r .key
+
+# Remove NAME's node from the tailnet (so the next NAME is not NAME-1) and its ssh host key here. Needs the Devices scope
+forget NAME:
+    @ssh-keygen -R "{{NAME}}" >/dev/null 2>&1 || true
+    @token="{{ts_token}}"; \
+    id="$(curl -fsS -H "Authorization: Bearer $token" "{{ts_api}}/tailnet/-/devices" \
+      | jq -r --arg h "{{NAME}}" '.devices[] | select(.hostname==$h) | .nodeId' | head -1)"; \
+    if [ -z "$id" ]; then echo "{{NAME}}: no such node on the tailnet, nothing to forget"; \
+    elif curl -fsS -X DELETE -H "Authorization: Bearer $token" "{{ts_api}}/device/$id" >/dev/null 2>&1; then echo "{{NAME}}: removed from the tailnet"; \
+    else echo "{{NAME}}: could not remove node $id. The OAuth client lacks the Devices (Core) write scope;"; \
+         echo "  delete it in the admin console (Machines -> {{NAME}} -> Remove) or issue a client with that scope."; exit 1; fi
 
 # Which inventory hosts are on the tailnet right now, from this machine's view, no ssh
 online:

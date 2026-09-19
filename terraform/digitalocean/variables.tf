@@ -4,7 +4,7 @@
 # `just up` again.
 variable "droplets" {
   type = map(object({
-    size   = optional(string, "s-1vcpu-1gb") # $6/mo; `doctl compute size list`
+    size   = optional(string, "s-1vcpu-1gb") # $6/mo; fine for a service, too small to build the environment on (see terraform.tfvars)
     region = optional(string, "sfo3")        # `doctl compute region list`
     image  = optional(string, "ubuntu-26-04-x64")
   }))

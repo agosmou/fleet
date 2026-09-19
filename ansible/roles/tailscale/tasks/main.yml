@@ -40,6 +40,7 @@
       {{ ((ts.Self.KeyExpiry | to_datetime('%Y-%m-%dT%H:%M:%SZ')) - now(utc=true)).days }}
   when:
     - ts.Self.KeyExpiry is defined
+    - ts.Self.KeyExpiry is not none
     - not ts.Self.KeyExpiry.startswith('0001-')
 
 - name: Warn when the key expires soon
