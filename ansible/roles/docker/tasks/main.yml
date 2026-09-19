@@ -55,109 +55,115 @@
     state: present
   register: docker_repo
 
-# ---- packages ------------------------------------------------------------
+# ---- packages, daemon, firewall -----------------------------------------
+# One block: a dry run cannot write the repository above, so on a box
+# that does not have Docker yet nothing below could work (no package to
+# see, no docker.service to start). Skipped as a whole then; `just
+# check` on such a box shows the repository diff and stops there. On a
+# box that has Docker the block runs under --check like any other task.
 
-# Ubuntu's own builds conflict with Docker's (same paths, older). Docker's
-# instructions remove exactly these first. A no-op on a fresh box.
-- name: Distro container packages that conflict with Docker CE
-  ansible.builtin.apt:
-    name:
-      - docker.io
-      - docker-doc
-      - docker-compose
-      - docker-compose-v2
-      - podman-docker
-      - containerd
-      - runc
-    state: absent
-
-- name: Docker CE, compose and buildx
-  ansible.builtin.apt:
-    name:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
-    state: present
-    update_cache: true
-    cache_valid_time: "{{ 0 if docker_repo.changed else 3600 }}"
-  # A dry run does not write the repository, so apt cannot see the
-  # packages yet; skipping here keeps `just check` clean on a fresh box.
+- name: Install and configure Docker
   when: not (ansible_check_mode and docker_repo.changed)
+  block:
+    # Ubuntu's own builds conflict with Docker's (same paths, older).
+    # Docker's instructions remove exactly these first. A no-op on a
+    # fresh box.
+    - name: Distro container packages that conflict with Docker CE
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-doc
+          - docker-compose
+          - docker-compose-v2
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
 
-- name: Docker's repository is patched by unattended-upgrades
-  ansible.builtin.copy:
-    src: 52unattended-upgrades-docker
-    dest: /etc/apt/apt.conf.d/52unattended-upgrades-docker
-    owner: root
-    group: root
-    mode: "0644"
+    - name: Docker CE, compose and buildx
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+        cache_valid_time: "{{ 0 if docker_repo.changed else 3600 }}"
 
-# ---- daemon --------------------------------------------------------------
+    - name: Docker's repository is patched by unattended-upgrades
+      ansible.builtin.copy:
+        src: 52unattended-upgrades-docker
+        dest: /etc/apt/apt.conf.d/52unattended-upgrades-docker
+        owner: root
+        group: root
+        mode: "0644"
 
-- name: /etc/docker
-  ansible.builtin.file:
-    path: /etc/docker
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
+    # ---- daemon ----
 
-- name: daemon.json
-  ansible.builtin.copy:
-    content: "{{ docker_daemon_config | to_nice_json }}\n"
-    dest: /etc/docker/daemon.json
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart docker
+    - name: /etc/docker
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
 
-- name: dockerd enabled and running
-  ansible.builtin.systemd_service:
-    name: docker
-    enabled: true
-    state: started
+    - name: daemon.json
+      ansible.builtin.copy:
+        content: "{{ docker_daemon_config | to_nice_json }}\n"
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart docker
 
-- name: Users who may use the docker socket (root-equivalent)
-  ansible.builtin.user:
-    name: "{{ item }}"
-    groups: docker
-    append: true
-  loop: "{{ docker_users }}"
+    - name: dockerd enabled and running
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
 
-# ---- firewall ------------------------------------------------------------
-# See files/docker-user-chain. A oneshot bound to docker.service, so the
-# chain is refilled whenever dockerd (re)starts.
+    - name: Users who may use the docker socket (root-equivalent)
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: docker
+        append: true
+      loop: "{{ docker_users }}"
 
-- name: DOCKER-USER chain script
-  ansible.builtin.copy:
-    src: docker-user-chain
-    dest: /usr/local/sbin/docker-user-chain
-    owner: root
-    group: root
-    mode: "0755"
-  notify: Restart docker-user-chain
+    # ---- firewall ----
+    # See files/docker-user-chain. A oneshot bound to docker.service, so
+    # the chain is refilled whenever dockerd (re)starts.
 
-- name: DOCKER-USER chain unit
-  ansible.builtin.copy:
-    src: docker-user-chain.service
-    dest: /etc/systemd/system/docker-user-chain.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify: Restart docker-user-chain
+    - name: DOCKER-USER chain script
+      ansible.builtin.copy:
+        src: docker-user-chain
+        dest: /usr/local/sbin/docker-user-chain
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart docker-user-chain
 
-- name: DOCKER-USER chain filled now and after every dockerd start
-  ansible.builtin.systemd_service:
-    name: docker-user-chain
-    daemon_reload: true
-    enabled: true
-    state: started
+    - name: DOCKER-USER chain unit
+      ansible.builtin.copy:
+        src: docker-user-chain.service
+        dest: /etc/systemd/system/docker-user-chain.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart docker-user-chain
 
-# ---- verify --------------------------------------------------------------
+    - name: DOCKER-USER chain filled now and after every dockerd start
+      ansible.builtin.systemd_service:
+        name: docker-user-chain
+        daemon_reload: true
+        enabled: true
+        state: started
 
-- name: Docker answers
-  ansible.builtin.command: docker compose version
-  changed_when: false
-  when: not ansible_check_mode
+    # ---- verify ----
+
+    - name: Docker answers
+      ansible.builtin.command: docker compose version
+      changed_when: false
+      when: not ansible_check_mode
