@@ -1,0 +1,14 @@
+# Managed by Ansible (fleet, roles/docker).
+[Unit]
+Description=Fill Docker's DOCKER-USER firewall chain
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/docker-user-chain
+
+[Install]
+WantedBy=multi-user.target

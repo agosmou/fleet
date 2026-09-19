@@ -1,0 +1,159 @@
+---
+# Docker CE from Docker's own apt repository, for the `containers` group.
+# Why Docker and not podman on the servers: the workloads are dev
+# workloads (compose, Testcontainers, tools that assume the Docker socket)
+# and the Mac runs Docker Desktop; one `docker` that behaves the same
+# everywhere. Why a group and not `all`: dockerd is ~100 MB resident, a
+# 1 GB droplet that runs no containers should not carry it. Why here and
+# not environment's platform/debian step: a repository, a root daemon, a
+# group and firewall rules are the root layer, which this repository owns
+# on servers. The user layer (environment) only asserts `docker` exists.
+#
+# The install follows Docker's Ubuntu instructions, keyring and all, as
+# idempotent tasks rather than get.docker.com (a script that hides what it
+# changed). `state: present`, not latest: a runtime upgrade is deliberate,
+# not a side effect of `just apply`; unattended-upgrades handles security.
+
+- name: Docker CE role only knows Ubuntu
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == "Ubuntu"
+      - ansible_facts['architecture'] in docker_apt_arch
+    fail_msg: "roles/docker: {{ ansible_facts['distribution'] }}/{{ ansible_facts['architecture'] }} is not handled"
+  vars:
+    docker_apt_arch: { x86_64: amd64, aarch64: arm64 }
+
+# ---- repository ----------------------------------------------------------
+
+- name: Keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Docker's signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+# deb822 is apt's current source format (one file, Signed-By inside it),
+# what Docker's own instructions write since 24.04.
+- name: Docker's apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: https://download.docker.com/linux/ubuntu
+    suites: ["{{ ansible_facts['distribution_release'] }}"]
+    components: [stable]
+    architectures: ["{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"]
+    signed_by: /etc/apt/keyrings/docker.asc
+    state: present
+  register: docker_repo
+
+# ---- packages ------------------------------------------------------------
+
+# Ubuntu's own builds conflict with Docker's (same paths, older). Docker's
+# instructions remove exactly these first. A no-op on a fresh box.
+- name: Distro container packages that conflict with Docker CE
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-doc
+      - docker-compose
+      - docker-compose-v2
+      - podman-docker
+      - containerd
+      - runc
+    state: absent
+
+- name: Docker CE, compose and buildx
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ 0 if docker_repo.changed else 3600 }}"
+
+- name: Docker's repository is patched by unattended-upgrades
+  ansible.builtin.copy:
+    src: 52unattended-upgrades-docker
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-docker
+    owner: root
+    group: root
+    mode: "0644"
+
+# ---- daemon --------------------------------------------------------------
+
+- name: /etc/docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: daemon.json
+  ansible.builtin.copy:
+    content: "{{ docker_daemon_config | to_nice_json }}\n"
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker
+
+- name: dockerd enabled and running
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Users who may use the docker socket (root-equivalent)
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"
+
+# ---- firewall ------------------------------------------------------------
+# See files/docker-user-chain. A oneshot bound to docker.service, so the
+# chain is refilled whenever dockerd (re)starts.
+
+- name: DOCKER-USER chain script
+  ansible.builtin.copy:
+    src: docker-user-chain
+    dest: /usr/local/sbin/docker-user-chain
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart docker-user-chain
+
+- name: DOCKER-USER chain unit
+  ansible.builtin.copy:
+    src: docker-user-chain.service
+    dest: /etc/systemd/system/docker-user-chain.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart docker-user-chain
+
+- name: DOCKER-USER chain filled now and after every dockerd start
+  ansible.builtin.systemd_service:
+    name: docker-user-chain
+    daemon_reload: true
+    enabled: true
+    state: started
+
+# ---- verify --------------------------------------------------------------
+
+- name: Docker answers
+  ansible.builtin.command: docker compose version
+  changed_when: false

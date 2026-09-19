@@ -261,9 +261,10 @@ Read more: [configuration settings](https://docs.ansible.com/ansible/latest/refe
 Who the machines are. Ansible merges every file here, so a host named in
 two files is one host with both sets of variables.
 
-- `10-home.yml`, hand-written: `spectre` in group `laptops`, the Pis to
-  come in `pis`, an empty `vps` group. Groups say what a machine *is*;
-  the playbook maps groups to roles. Hosts have no `ansible_host` because
+- `10-home.yml`, hand-written: `spectre` in groups `laptops` and
+  `containers`, the Pis to come in `pis`, an empty `vps` group. Groups
+  say what a machine *is*; the playbook maps groups to roles, and a host
+  is in as many groups as apply. Hosts have no `ansible_host` because
   the inventory name is the tailnet name and MagicDNS resolves it.
 - `20-vps.yml`, written by terraform: every droplet, in group `vps`.
   Committed, so the inventory in git is the whole fleet; deleted by
@@ -284,8 +285,9 @@ Read more: [inventory](https://docs.ansible.com/ansible/latest/inventory_guide/i
 The whole fleet in one playbook: which groups get which roles, in what
 order. Two plays: every machine gets the tailscale check as a `pre_task`
 (so a disconnected or misnamed node fails before anything is touched),
-then `base`, `ssh`, `ufw`; laptops additionally get `laptop`. Every recipe
-runs this one file; `-l NAME` limits it to one host.
+then `base`, `ssh`, `ufw`; laptops additionally get `laptop`, the
+`containers` group `docker`. Every recipe runs this one file; `-l NAME`
+limits it to one host.
 
 ### `roles/`
 
@@ -316,12 +318,27 @@ subject. Each has a comment at the top saying what it does and why.
   suspends, and the sleep targets masked so nothing else can either.
   Battery charge limits are deliberately not here (no sysfs knob on the
   Spectre).
+- **`docker/`**: Docker CE the way Docker's own Ubuntu instructions do
+  it, as idempotent tasks: keyring, deb822 repository, the five packages,
+  Ubuntu's conflicting builds removed first. `daemon.json` (from
+  `defaults/main.yml`, rendered as JSON) binds published ports to
+  loopback for the default bridge *and* for the bridges compose creates,
+  rotates logs, and keeps containers up while dockerd restarts. A oneshot
+  unit bound to `docker.service` fills the `DOCKER-USER` chain, the one
+  place Docker lets a firewall have a say before its own NAT rules: only
+  `lo`, `tailscale0` and the bridges may reach a container. An apt.conf
+  drop-in adds Docker's origin to unattended-upgrades, which otherwise
+  never patches it. `docker_users` is an explicit list because the socket
+  is root.
 
 Read more: [unattended-upgrades](https://help.ubuntu.com/community/AutomaticSecurityUpdates);
 [`sshd_config`](https://manpages.ubuntu.com/manpages/noble/en/man5/sshd_config.5.html);
 [ufw](https://help.ubuntu.com/community/UFW);
 [`logind.conf`](https://www.freedesktop.org/software/systemd/man/latest/logind.conf.html);
-[`community.general.ufw`](https://docs.ansible.com/ansible/latest/collections/community/general/ufw_module.html).
+[`community.general.ufw`](https://docs.ansible.com/ansible/latest/collections/community/general/ufw_module.html);
+[Docker on Ubuntu](https://docs.docker.com/engine/install/ubuntu/);
+[Docker and ufw](https://docs.docker.com/engine/network/packet-filtering-firewalls/);
+[`dockerd` options](https://docs.docker.com/reference/cli/dockerd/).
 
 ### `00-local.yml.example`
 

@@ -23,3 +23,9 @@ all:
       # pi02w: {}
     vps:
       hosts: {}   # populated by inventory/20-vps.yml
+    # Machines that run containers (roles/docker). Opt-in rather than
+    # everything: dockerd costs ~100 MB resident, which a 1 GB droplet
+    # that runs none should not pay. A droplet joins by being listed here.
+    containers:
+      hosts:
+        spectre:

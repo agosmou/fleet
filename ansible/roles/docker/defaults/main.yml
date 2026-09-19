@@ -1,0 +1,27 @@
+---
+# Accounts added to the `docker` group. The docker socket is root: whoever
+# can talk to it can mount / into a container. Every name here is a
+# deliberate grant, so the list is a variable rather than ansible_user.
+docker_users: [ag]
+
+# /etc/docker/daemon.json, rendered with to_nice_json.
+docker_daemon_config:
+  # Published ports bind to loopback unless a compose file or -p says
+  # otherwise. `ip` covers the default bridge; every compose project makes
+  # its own bridge, which only default-network-opts reaches. Both, or a
+  # `ports: ["8080:8080"]` in a compose file is on every interface, past
+  # ufw (see the comment in tasks/main.yml). A tailnet-facing service then
+  # is `tailscale serve`, or an explicit `100.x.y.z:8080:8080`.
+  ip: "127.0.0.1"
+  default-network-opts:
+    bridge:
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+  # Containers keep running while dockerd restarts (unattended upgrade of
+  # docker-ce, a crash). Not across a change of the networking options.
+  live-restore: true
+  # `local` rotates; the default json-file grows until the disk is full.
+  # `docker logs` reads both.
+  log-driver: local
+  log-opts:
+    max-size: "10m"
+    max-file: "3"

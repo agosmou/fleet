@@ -50,5 +50,8 @@ Short list of what is next, in order. Done items are deleted, not ticked.
   (cloud-init's QEMU tutorial) so `runcmd` mistakes surface before a
   droplet does.
 - CI: `just lint` on push. Nothing that needs secrets.
+- `roles/docker`: a weekly `docker system prune -af --filter until=168h`
+  timer on the droplets; image bloat is how a 25 GB disk fills. And
+  `default-address-pools` if a subnet router ever advertises 172.16/12.
 - Remote terraform state (DO Spaces) before a second workstation runs
   `just up`.

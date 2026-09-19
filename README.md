@@ -38,7 +38,7 @@ flowchart LR
 
     subgraph steady["STEADY STATE  ·  just check / just apply"]
         direction LR
-        ans["ansible, over the tailnet<br/>① tailscale check, fail fast<br/>② base · ssh · ufw (· laptop)"] --> env["just env NAME<br/>environment's bootstrap:<br/>the user layer"]
+        ans["ansible, over the tailnet<br/>① tailscale check, fail fast<br/>② base · ssh · ufw (· laptop · docker)"] --> env["just env NAME<br/>environment's bootstrap:<br/>the user layer"]
     end
 
     env --> done(["ssh NAME → your shell, your tools"])
@@ -70,8 +70,8 @@ terraform/digitalocean/   EXISTENCE  droplets + provider firewall; the tailnet
                                      ansible/inventory/20-vps.yml
 cloud-init/               BIRTH      base.yaml.tftpl: user, keys, ufw,
   authorized_keys                    tailscale up. Only what ansible needs
-ansible/                  STEADY     roles: base ssh ufw laptop, after the
-  inventory/10-home.yml              tailscale check (pre_tasks, fails fast)
+ansible/                  STEADY     roles: base ssh ufw laptop docker, after
+  inventory/10-home.yml              the tailscale check (pre_tasks, fails fast)
   inventory/00-local.yml             gitignored: LAN facts, from home-network
   inventory/20-vps.yml               terraform-written: the droplets
   inventory/group_vars/all.yml       defaults for every machine
@@ -139,6 +139,24 @@ Removing one: delete the line, `just up`, `just forget <name>`.
 | `ssh`       | Keys only, no root, only listed users, no X11/agent forwarding, idle sessions dropped; validated with `sshd -t` before it is written, reloaded not restarted |
 | `ufw`       | Default deny inbound. Allowed: anything over `tailscale0`, Tailscale's WireGuard port, and SSH from `lan_cidr` where a host defines one |
 | `laptop`    | Lid closed and idle never suspend; sleep targets masked. Group `laptops` only |
+| `docker`    | Docker CE from Docker's apt repository, compose and buildx, `ag` in the `docker` group, unattended-upgrades patches it. Published ports bind to loopback by default and a `DOCKER-USER` chain drops what does not arrive over `lo`, `tailscale0` or a bridge, so a container is never on the LAN or the internet by accident. Group `containers` only |
+
+## Containers
+
+`docker` and `docker compose` behave the same on every machine; only the
+install differs by who owns root there. Servers: this repository, group
+`containers` (spectre today; a droplet joins by being listed in
+`inventory/10-home.yml`). The Mac: Docker Desktop, from environment's
+Brewfile. The Fedora laptop: podman, with the switch to Docker written
+down in environment's `docs/containers.md`.
+
+The rule on a server, because Docker publishes ports with NAT rules that
+run before ufw sees the packet: **a published port is loopback unless you
+say otherwise**. `ports: ["5173:5173"]` in a compose file lands on
+`127.0.0.1:5173`; reach it from the tailnet with `tailscale serve 5173`
+(environment's `docs/remote-dev.md`). To listen on the tailnet directly,
+write the address: `100.x.y.z:5173:5173`. The `DOCKER-USER` chain drops
+anything else even if a file says `0.0.0.0`.
 
 ## Lockout safety
 

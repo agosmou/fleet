@@ -1,0 +1,7 @@
+// Managed by Ansible (fleet, roles/docker). Ubuntu's default list of
+// origins does not include Docker's repository, so docker-ce would never
+// be patched by unattended-upgrades. live-restore (daemon.json) keeps the
+// containers up through the restart.
+Unattended-Upgrade::Origins-Pattern {
+  "origin=Docker,suite=${distro_codename}";
+};

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Managed by Ansible (fleet, roles/docker). Runs after dockerd starts.
+#
+# Docker publishes a container port with a NAT rule that runs before ufw's
+# INPUT rules ever see the packet, so `ufw status` says nothing about what
+# a container exposes. What Docker does honour is the DOCKER-USER chain,
+# consulted first for every packet forwarded to a container. This file
+# fills it: forwarded traffic may come from the box itself, the tailnet,
+# or another container; anything else (the LAN, the internet) is dropped.
+# daemon.json already binds published ports to loopback; this is the
+# backstop for a compose file that says 0.0.0.0 anyway.
+set -eu
+for ipt in iptables ip6tables; do
+  "$ipt" -N DOCKER-USER 2>/dev/null || true
+  "$ipt" -F DOCKER-USER
+  "$ipt" -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+  "$ipt" -A DOCKER-USER -i lo         -j RETURN
+  "$ipt" -A DOCKER-USER -i tailscale0 -j RETURN
+  "$ipt" -A DOCKER-USER -i docker0    -j RETURN   # the default bridge
+  "$ipt" -A DOCKER-USER -i br-+       -j RETURN   # compose bridges, br-<id>
+  "$ipt" -A DOCKER-USER -j DROP
+done

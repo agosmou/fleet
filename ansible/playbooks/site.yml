@@ -19,3 +19,8 @@
   hosts: laptops
   roles:
     - laptop
+
+- name: Machines that run containers
+  hosts: containers
+  roles:
+    - docker
