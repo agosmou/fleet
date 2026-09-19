@@ -45,7 +45,7 @@
   ansible.builtin.command: fallocate -l 2G /swapfile
   when:
     - not swapfile.stat.exists
-    - ansible_swaptotal_mb < 512
+    - ansible_facts['swaptotal_mb'] < 512
 
 - name: Swapfile is root-only
   ansible.builtin.file:
@@ -53,23 +53,23 @@
     owner: root
     group: root
     mode: "0600"
-  when: swapfile.stat.exists or ansible_swaptotal_mb < 512
+  when: swapfile.stat.exists or ansible_facts['swaptotal_mb'] < 512
 
 - name: Format the swapfile
   ansible.builtin.command: mkswap /swapfile
   when:
     - not swapfile.stat.exists
-    - ansible_swaptotal_mb < 512
+    - ansible_facts['swaptotal_mb'] < 512
 
 - name: Swapfile in fstab
   ansible.builtin.lineinfile:
     path: /etc/fstab
     line: "/swapfile none swap sw 0 0"
     regexp: '^/swapfile\s'
-  when: swapfile.stat.exists or ansible_swaptotal_mb < 512
+  when: swapfile.stat.exists or ansible_facts['swaptotal_mb'] < 512
 
 - name: Swapfile active
   ansible.builtin.command: swapon /swapfile
   when:
-    - ansible_swaptotal_mb < 512
+    - ansible_facts['swaptotal_mb'] < 512
   changed_when: true

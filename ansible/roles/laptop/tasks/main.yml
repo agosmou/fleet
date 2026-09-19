@@ -3,6 +3,14 @@
 # it. Battery charge limits are deliberately not handled (no sysfs knob on
 # the Spectre; BIOS or nothing).
 
+- name: Drop-in directory for logind
+  ansible.builtin.file:
+    path: /etc/systemd/logind.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Ignore the lid switch and idle
   ansible.builtin.copy:
     dest: /etc/systemd/logind.conf.d/server.conf
