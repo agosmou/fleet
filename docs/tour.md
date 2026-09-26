@@ -174,8 +174,12 @@ expiry. `recreate_if_invalid = "never"` stops terraform from minting a
 fresh key on every plan once the first is used.
 
 `policy.hujson` is JSON with comments (HuJSON). `tagOwners` says who may
-assign `tag:server`; `grants` is allow-all, Tailscale's default for a
-personal tailnet, to be tightened later (TODO, explore).
+assign `tag:server` and `tag:backup`. `grants` trusts people's devices:
+they reach each other and every tagged machine on every port. Servers
+reach only the backup machine's append-only rest-server (a Pi 4), and
+nothing lets a server open a connection to a laptop, a phone or another
+server; the backup machine starts nothing. `tests` name tags only, since
+this repository is public.
 
 Read more: [`tailscale_acl`](https://registry.terraform.io/providers/tailscale/tailscale/latest/docs/resources/acl);
 [`tailscale_tailnet_key`](https://registry.terraform.io/providers/tailscale/tailscale/latest/docs/resources/tailnet_key);

@@ -41,8 +41,6 @@ Short list of what is next, in order. Done items are deleted, not ticked.
 
 ## Explore
 
-- `tailscale_acl`: tighten from allow-all to `autogroup:member →
-  tag:server:22` once every server carries the tag.
 - `just vm`: boot the rendered cloud-init in a local libvirt VM
   (cloud-init's QEMU tutorial) so `runcmd` mistakes surface before a
   droplet does.
