@@ -23,8 +23,17 @@ default:
 # applied to the fleet instead of to this machine: the tailnet policy and
 # the droplets (terraform), then every host's configuration (ansible).
 
+# fleet acts on the servers and the tailnet from the workstation that holds
+# secrets.env and the terraform state; a server never runs it (it runs only
+# ~/environment's `just sync`). Every recipe that touches terraform or the
+# hosts starts here, so the mistake is a sentence, not `tofu: not found`.
+[private]
+workstation:
+    @[[ -f "{{repo}}/secrets.env" ]] || { echo "fleet runs from the workstation that has secrets.env and the terraform state (t14s), not here." >&2; echo "On a server, only: cd ~/environment && just sync" >&2; exit 1; }
+    @command -v tofu >/dev/null || { echo "tofu is not on PATH: the dev shell is not loaded. Run: direnv allow (or prefix: nix develop -c just ...)" >&2; exit 1; }
+
 # Bring the fleet up to date: pull, show every change, ask once, apply it all, then doctor
-sync:
+sync: workstation
     @cd "{{repo}}" && if git diff --quiet && git diff --cached --quiet; then git pull --ff-only; else echo "local changes present; not pulling"; fi
     cd "{{tf}}" && tofu init -input=false >/dev/null && tofu plan -out=sync.tfplan
     just online
@@ -41,7 +50,7 @@ check *ARGS: plan online
 # A machine that still asks for a sudo password (built by hand, never
 # converged): add -K once; roles/base then makes sudo passwordless.
 # Apply everything: terraform (asks when there is a change), then every host, or `just apply -l NAME` for one
-apply *ARGS:
+apply *ARGS: workstation
     cd "{{tf}}" && tofu init -input=false >/dev/null && tofu apply
     cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --diff {{ARGS}}
 
@@ -89,11 +98,11 @@ new NAME: up (wait NAME) (apply "-l" NAME) (env NAME)
 # ---- Existence: terraform ---------------------------------------------------
 
 # Create or change droplets to match terraform.tfvars (asks before acting)
-up:
+up: workstation
     cd "{{tf}}" && tofu init -input=false >/dev/null && tofu apply
 
 # Show what `just up` would do
-plan:
+plan: workstation
     cd "{{tf}}" && tofu init -input=false >/dev/null && tofu plan
 
 # Destroy every droplet, its firewall and birth key (asks first); the tailnet policy stays managed. Then `just forget NAME` for each
