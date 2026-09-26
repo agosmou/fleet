@@ -24,6 +24,83 @@
     proto: udp
     comment: Tailscale WireGuard
 
+# ---- LAN egress ------------------------------------------------------------
+# The tailnet policy (terraform/digitalocean/policy.hujson) stops a server
+# opening connections to your devices over Tailscale; it cannot see the
+# LAN. Without these rules a compromised server reaches the laptop and the
+# mini at their LAN addresses instead. So out to the LAN only for what the
+# box needs from it: the router's DNS and DHCP, WireGuard (tailscaled's
+# direct path to LAN peers; what travels inside it is still checked by the
+# tailnet policy), and whatever a host lists in lan_egress_allow. Replies
+# to connections that arrive from the LAN (SSH) are not new connections
+# and still flow. Containers are the docker role's (templates/docker-user-chain.j2).
+#
+# ufw checks output rules in order, first match wins. The allows are
+# inserted above the first IPv4 rule, so one added later still lands
+# above the deny.
+- name: LAN egress
+  when: lan_cidr is defined
+  block:
+    - name: Allow DNS to the router
+      community.general.ufw:
+        rule: allow
+        direction: out
+        to_ip: "{{ ansible_facts['default_ipv4']['gateway'] }}"
+        to_port: "53"
+        comment: LAN egress - DNS to router
+        insert: 0
+        insert_relative_to: first-ipv4
+
+    - name: Allow DHCP to the router
+      community.general.ufw:
+        rule: allow
+        direction: out
+        to_ip: "{{ ansible_facts['default_ipv4']['gateway'] }}"
+        to_port: "67"
+        proto: udp
+        comment: LAN egress - DHCP to router
+        insert: 0
+        insert_relative_to: first-ipv4
+
+    - name: Allow WireGuard to LAN peers
+      community.general.ufw:
+        rule: allow
+        direction: out
+        to_ip: "{{ lan_cidr }}"
+        to_port: "41641"
+        proto: udp
+        comment: LAN egress - Tailscale direct path
+        insert: 0
+        insert_relative_to: first-ipv4
+
+    - name: Allow the host's own LAN exceptions
+      community.general.ufw:
+        rule: allow
+        direction: out
+        to_ip: "{{ item }}"
+        comment: LAN egress - lan_egress_allow
+        insert: 0
+        insert_relative_to: first-ipv4
+      loop: "{{ lan_egress_allow }}"
+
+    - name: Deny everything else to the LAN
+      community.general.ufw:
+        rule: deny
+        direction: out
+        to_ip: "{{ lan_cidr }}"
+        comment: LAN egress - default deny
+
+    # The LAN has no global IPv6 today, but every machine on it has a
+    # link-local fe80:: address, and that reaches it just the same.
+    # Neighbour discovery is ICMPv6, accepted by ufw's before6 rules
+    # ahead of this.
+    - name: Deny IPv6 link-local to the LAN
+      community.general.ufw:
+        rule: deny
+        direction: out
+        to_ip: fe80::/10
+        comment: LAN egress - link-local default deny
+
 - name: Default deny incoming
   community.general.ufw:
     direction: incoming

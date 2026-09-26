@@ -1,0 +1,42 @@
+#!/bin/sh
+# Managed by Ansible (fleet, roles/docker). Runs after dockerd starts.
+#
+# Docker publishes a container port with a NAT rule that runs before ufw's
+# INPUT rules ever see the packet, so `ufw status` says nothing about what
+# a container exposes. What Docker does honour is the DOCKER-USER chain,
+# consulted first for every packet forwarded to or from a container. This
+# file fills it: forwarded traffic may come from the box itself, the
+# tailnet, or another container; anything else (the LAN, the internet) is
+# dropped.
+# daemon.json already binds published ports to loopback; this is the
+# backstop for a compose file that says 0.0.0.0 anyway.
+{% if lan_cidr is defined %}
+#
+# Containers leave through the same chain, and ufw's output rules never
+# see them. So the LAN egress rule is repeated here: a container may reach
+# the router's DNS and the addresses in lan_egress_allow, and nothing else
+# on {{ lan_cidr }}. IPv4 only; containers have no IPv6.
+{% endif %}
+set -eu
+for ipt in iptables ip6tables; do
+  "$ipt" -N DOCKER-USER 2>/dev/null || true
+  "$ipt" -F DOCKER-USER
+  "$ipt" -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+{% if lan_cidr is defined %}
+  if [ "$ipt" = iptables ]; then
+    for br in docker0 br-+; do
+      "$ipt" -A DOCKER-USER -i "$br" -d {{ ansible_facts['default_ipv4']['gateway'] }} -p udp --dport 53 -j RETURN
+      "$ipt" -A DOCKER-USER -i "$br" -d {{ ansible_facts['default_ipv4']['gateway'] }} -p tcp --dport 53 -j RETURN
+{% for ip in lan_egress_allow %}
+      "$ipt" -A DOCKER-USER -i "$br" -d {{ ip }} -j RETURN
+{% endfor %}
+      "$ipt" -A DOCKER-USER -i "$br" -d {{ lan_cidr }} -j DROP
+    done
+  fi
+{% endif %}
+  "$ipt" -A DOCKER-USER -i lo         -j RETURN
+  "$ipt" -A DOCKER-USER -i tailscale0 -j RETURN
+  "$ipt" -A DOCKER-USER -i docker0    -j RETURN   # the default bridge
+  "$ipt" -A DOCKER-USER -i br-+       -j RETURN   # compose bridges, br-<id>
+  "$ipt" -A DOCKER-USER -j DROP
+done

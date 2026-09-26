@@ -133,12 +133,12 @@
       loop: "{{ docker_users }}"
 
     # ---- firewall ----
-    # See files/docker-user-chain. A oneshot bound to docker.service, so
-    # the chain is refilled whenever dockerd (re)starts.
+    # See templates/docker-user-chain.j2. A oneshot bound to
+    # docker.service, so the chain is refilled whenever dockerd (re)starts.
 
     - name: DOCKER-USER chain script
-      ansible.builtin.copy:
-        src: docker-user-chain
+      ansible.builtin.template:
+        src: docker-user-chain.j2
         dest: /usr/local/sbin/docker-user-chain
         owner: root
         group: root

@@ -13,10 +13,9 @@ all:
       hosts:
         spectre:
           # lan_cidr: in 00-local.yml
-          # birth: hand. Installed from USB and joined with `sudo tailscale
-          # up` before cloud-init existed here, so its node key EXPIRES
-          # (untagged); the tailscale check warns 30 days out. Becomes a
-          # cloud-init birth if/when it is reinstalled.
+          # birth: hand. Installed from USB before cloud-init existed here,
+          # tagged tag:server afterwards. Reinstalled: `just join spectre`
+          # (TODO: an autoinstall USB makes that a cloud-init birth).
     pis:
       hosts: {}
       # pi4: {}

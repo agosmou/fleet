@@ -3,11 +3,18 @@
 # Ansible merges every file in inventory/, so a host named here and in
 # 10-home.yml is one host with both sets of variables.
 #
-# lan_cidr: the subnet allowed to reach SSH directly (roles/ufw), the
-# fallback when Tailscale is down. Only machines with a LAN have one.
+# lan_cidr: the LAN's subnet. Two rules follow from it (roles/ufw,
+# roles/docker): SSH may arrive from it, the fallback when Tailscale is
+# down; and the machine and its containers may open connections into it
+# only to the router's DNS and DHCP and to lan_egress_allow. Only machines
+# with a LAN have one.
+#
+# lan_egress_allow: LAN addresses this machine may reach anyway, e.g. the
+# Hue Bridge once Home Assistant runs here. Empty by default.
 all:
   hosts:
     spectre:
       lan_cidr: 192.168.0.0/24
+      # lan_egress_allow: [192.168.0.7]
     # pi4:
     #   lan_cidr: 192.168.0.0/24

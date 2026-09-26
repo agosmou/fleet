@@ -6,3 +6,13 @@ ansible_user: ag
 ssh_allow_users: [ag]
 # unattended-upgrades may reboot at this time if a kernel update needs it.
 auto_reboot_time: "04:00"
+# LAN addresses a machine may open connections to, beyond the router's DNS
+# and DHCP (roles/ufw for the host, roles/docker for its containers). Only
+# where lan_cidr is defined; set per host in 00-local.yml, e.g. the Hue
+# Bridge for Home Assistant.
+lan_egress_allow: []
+# The tag every machine carries on the tailnet (roles/tailscale asserts it,
+# `just doctor` checks it, `just join` mints keys for it). Defined in
+# terraform/digitalocean/policy.hujson. A backup machine overrides it with
+# tag:backup.
+tailscale_tag: tag:server

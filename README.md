@@ -15,6 +15,44 @@ two Raspberry Pis. Every one is reached by its tailnet name; no IP appears
 in a command. New to any of this? Read [`docs/tour.md`](docs/tour.md): every
 file, what it is for, when it runs, and where to read more.
 
+## TL;DR
+
+Every command runs **from the workstation** (t14s): it holds
+`secrets.env` and the terraform state, and reaches the servers over the
+tailnet. A server never runs fleet itself.
+
+**Get started** on a workstation, once: see [Setup](#setup-once-per-workstation).
+
+**Maintain**, whenever you pull or change anything:
+
+```bash
+just sync       # pull, show every change (tailnet policy, droplets, hosts), ask once, apply, doctor
+```
+
+**Change something**: edit a role, the policy or `terraform.tfvars`, then
+`just check` and `just sync`. **Update everything**: `just update`, `just
+check`, `just sync`, commit `flake.lock` and `.terraform.lock.hcl`.
+**A server was reinstalled or is new hardware**: `just join <name>`, run
+the command it prints on that machine, then `just apply -l <name>`.
+
+The verbs are environment's: `sync`, `check`, `apply`, `update`, `doctor`
+mean the same thing in both repositories. environment's act on the machine
+you type them on; fleet's act on the servers and the tailnet.
+
+## Quickstart
+
+| I want to | Run |
+|---|---|
+| Bring the fleet up to date | `just sync` |
+| See what would change, without changing it | `just check` (`-l spectre` for one host) |
+| Apply without the question | `just apply` (`-l spectre` for one host) |
+| Know whether every server is healthy and tagged | `just doctor` |
+| Put a reinstalled spectre or a new Pi on the tailnet | `just join spectre`, `just join pi4 tag:backup` |
+| Create a droplet | a line in `terraform.tfvars`, `just new <name>` |
+| Change who may reach what on the tailnet | `terraform/digitalocean/policy.hujson`, `just sync` |
+| Update the tools and providers | `just update`, `just check`, `just sync`, commit both lock files |
+| Give a server my shell and editor | `just env <name>` (environment's bootstrap, `--target server`) |
+
 ## How it works
 
 Two ways a machine enters the fleet, one steady state for both:
@@ -30,7 +68,7 @@ flowchart LR
 
     subgraph adopt["A MACHINE YOU BUILT BY HAND  ·  spectre, the Pis"]
         direction LR
-        hand["Ubuntu installed · sudo tailscale up<br/>listed in inventory/10-home.yml"]
+        hand["Ubuntu installed · just join<br/>listed in inventory/10-home.yml"]
     end
 
     wait --> ans
@@ -85,7 +123,7 @@ docs/tour.md              every file explained, with where to read more
 |---|---|---|---|
 | droplets | `terraform.tfvars` | DO user-data | single-use `tag:server` key minted by terraform |
 | Pi 4, Pi Zero 2 W | bought | `user-data` on the SD card's `system-boot` | single-use key from `just key <name>` |
-| spectre | owned | none yet (autoinstall USB, if ever reinstalled) | by hand, `sudo tailscale up`; untagged, so its key expires |
+| spectre | owned | none yet (autoinstall USB, if ever reinstalled) | `just join spectre`: a single-use `tag:server` key and the one command to run on it |
 
 ## Setup, once per workstation
 
@@ -107,6 +145,13 @@ The three secrets and where they come from are described in
 ```sh
 just                    # list recipes
 
+# everyday: the same verbs as ~/environment, for the whole fleet
+just sync               # pull, show every change (policy, droplets, hosts), ask once, apply, doctor
+just check              # dry run of all of it; `just check -l spectre` for one host
+just apply              # terraform (asks), then every host; `just apply -l spectre` for one
+just update             # newest tools (flake.lock) and terraform providers; then check, apply, commit
+just doctor             # every host on the tailnet with its tag; secrets and state present here
+
 # a new server
 just new do1            # birth to ready: up → wait → apply -l do1 → env do1  (~10 min; see TODO 1 and 2 for the prompts and the time)
 just status do1         # cloud-init and tailscale state
@@ -115,16 +160,15 @@ just down               # destroy every droplet (asks); then:
 just forget do1         # remove its tailnet node and local ssh host key, so the next do1 is not do1-1
 just rebirth do1        # forget + replace key and droplet with the current cloud-init
 
-# the steady state, any machine
+# pieces
 just online             # which inventory hosts are on the tailnet right now, no ssh
-just check              # online, then a dry run with diff, every host
-just check -l spectre   # one host
-just apply -l spectre   # converge it
 just env spectre        # user layer: environment's bootstrap, --target server
 
 # the tailnet
-just key pi4            # single-use tag:server birth key for a machine terraform does not create
-just plan               # what `just up` would change, droplets and policy alike
+just join spectre       # put a machine on the tailnet tagged (a Pi, spectre after a reinstall)
+just join pi4 tag:backup
+just key pi4            # just the single-use key, e.g. for a Pi's SD card
+just plan               # what terraform would change, droplets and policy alike
 ```
 
 Adding a droplet: a line in `terraform.tfvars`, `just new <name>`.
@@ -137,9 +181,9 @@ Removing one: delete the line, `just up`, `just forget <name>`.
 | `tailscale` | Check only, first: connected (`Running`), online, node name is the inventory name, warns 30 days before an untagged key expires. Installs nothing: see "How a server is born" |
 | `base`      | Passwordless sudo for ag (the ssh key is the credential; validated with `visudo`), baseline packages, unattended security upgrades, auto-reboot at 04:00 only when a kernel update requires it, a 2 GB swapfile where a machine has none |
 | `ssh`       | Keys only, no root, only listed users, no X11/agent forwarding, idle sessions dropped; validated with `sshd -t` before it is written, reloaded not restarted |
-| `ufw`       | Default deny inbound. Allowed: anything over `tailscale0`, Tailscale's WireGuard port, and SSH from `lan_cidr` where a host defines one |
+| `ufw`       | Default deny inbound. Allowed: anything over `tailscale0`, Tailscale's WireGuard port, and SSH from `lan_cidr` where a host defines one. Where it does, outbound to the LAN is denied too, except the router's DNS and DHCP, WireGuard, and `lan_egress_allow`: the tailnet policy cannot see the LAN |
 | `laptop`    | Lid closed and idle never suspend; sleep targets masked. Group `laptops` only |
-| `docker`    | Docker CE from Docker's apt repository, compose and buildx, `ag` in the `docker` group, unattended-upgrades patches it. Published ports bind to loopback by default and a `DOCKER-USER` chain drops what does not arrive over `lo`, `tailscale0` or a bridge, so a container is never on the LAN or the internet by accident. Group `containers` only |
+| `docker`    | Docker CE from Docker's apt repository, compose and buildx, `ag` in the `docker` group, unattended-upgrades patches it. Published ports bind to loopback by default and a `DOCKER-USER` chain drops what does not arrive over `lo`, `tailscale0` or a bridge, so a container is never on the LAN or the internet by accident. Where `lan_cidr` is defined, containers may not open connections into the LAN either (router DNS and `lan_egress_allow` excepted). Group `containers` only |
 
 ## Containers
 

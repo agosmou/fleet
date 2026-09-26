@@ -25,9 +25,22 @@ the shell lines it stands for, so `just new do1` is what you type instead
 of remembering four tools' flags. Read it top to bottom once; the comment
 above each recipe is what `just` prints in its listing.
 
+- `sync`, `check`, `apply`, `update`, `doctor` are the everyday verbs,
+  named and shaped like environment's so there is one set to remember.
+  `check` is terraform's plan plus ansible's dry run; `apply` is
+  terraform (it asks when something would change) then ansible; `sync`
+  is pull, both dry runs, one question, both applies, then `doctor`.
+  `update` bumps `flake.lock` and the terraform provider lock. `doctor`
+  needs no ssh: this workstation has the secrets and the state, and every
+  inventory host is on the tailnet carrying its `tailscale_tag`.
 - `new NAME` chains the whole birth: `up` → `wait` → `apply -l NAME` →
   `env NAME`. Each step is also its own recipe so a failed step can be
   rerun alone.
+- `join NAME [TAG]` is the birth for hardware terraform does not create
+  (a Pi, spectre reinstalled): it mints a single-use key for the tag and
+  prints the one command to run on the machine. Machines only; your own
+  devices join untagged with `sudo tailscale up` (environment's doctor
+  reminds you).
 - `up` / `plan` / `down` are terraform. `up` and `down` ask before acting
   because they can destroy. `down` targets only machines and their keys;
   the tailnet policy stays under management.
@@ -35,9 +48,8 @@ above each recipe is what `just` prints in its listing.
   with `curl` and `jq`, using the same OAuth client terraform uses.
 - `wait`, `status` are ssh over the tailnet; `wait` blocks on
   `cloud-init status --wait`, which returns when first boot is finished.
-- `ping` / `check` / `apply` are ansible. `check` is a dry run with a diff:
-  the answer to "has anything drifted?" and the thing to run before
-  `apply`.
+- `ping` is ansible reaching every host. `check` with `-l NAME` is the
+  answer to "has this host drifted?"
 - `env HOST` runs environment's own bootstrap on the box. fleet stops
   here; the user layer is environment's.
 - `render` / `lint` are the tests that need no machine: terraform
@@ -274,9 +286,10 @@ two files is one host with both sets of variables.
   Committed, so the inventory in git is the whole fleet; deleted by
   `just down`.
 - `00-local.yml`, gitignored, from `../00-local.yml.example`: the LAN
-  facts, today only `lan_cidr` for spectre, the subnet allowed to reach
-  ssh directly as the fallback when Tailscale is down. Its source of truth
-  is the private home-network repository.
+  facts: `lan_cidr` for spectre, the subnet allowed to reach ssh directly
+  as the fallback when Tailscale is down and the subnet the machine may
+  not open connections into, and `lan_egress_allow`, its exceptions. Its
+  source of truth is the private home-network repository.
 - `group_vars/all.yml`: defaults for every machine (`ansible_user`, the
   allowed ssh users, the auto-reboot time). It lives under `inventory/`
   because that is where ansible looks for `group_vars`.
@@ -300,8 +313,10 @@ subject. Each has a comment at the top saying what it does and why.
 
 - **`tailscale/`**: check only. Reads `tailscale status --json` and
   asserts `BackendState == Running`, `Self.Online`, and that the node's
-  DNS name starts with the inventory name; warns when an untagged key
-  has under 30 days. Installs nothing, for a reason the comment spells
+  DNS name starts with the inventory name, and that it carries its
+  `tailscale_tag` (an untagged machine counts as one of your devices, so
+  that one stops the run; the fix is `just join`); warns when a key has
+  under 30 days. Installs nothing, for a reason the comment spells
   out: if tailscaled were missing, ansible could not have reached the box
   to install it.
 - **`base/`**: `/etc/sudoers.d/ag`, sudo without a password, written
@@ -320,8 +335,11 @@ subject. Each has a comment at the top saying what it does and why.
   than restarts, so open sessions survive. Also removes the hand-written
   drop-in it superseded on spectre.
 - **`ufw/`**: rules first, enable last, so the ssh session that is
-  applying them is never cut. LAN rule only where `lan_cidr` is defined;
-  `tailscale0` and Tailscale's UDP port everywhere; default deny inbound.
+  applying them is never cut. LAN rules only where `lan_cidr` is defined:
+  SSH in from it, and nothing out to it but the router's DNS and DHCP,
+  WireGuard and `lan_egress_allow`, because the tailnet policy that keeps
+  a server off your laptop cannot see the LAN. `tailscale0` and
+  Tailscale's UDP port everywhere; default deny inbound.
 - **`laptop/`**: a logind drop-in so closing the lid or idling never
   suspends, and the sleep targets masked so nothing else can either.
   Battery charge limits are deliberately not here (no sysfs knob on the
@@ -334,7 +352,9 @@ subject. Each has a comment at the top saying what it does and why.
   rotates logs, and keeps containers up while dockerd restarts. A oneshot
   unit bound to `docker.service` fills the `DOCKER-USER` chain, the one
   place Docker lets a firewall have a say before its own NAT rules: only
-  `lo`, `tailscale0` and the bridges may reach a container. An apt.conf
+  `lo`, `tailscale0` and the bridges may reach a container, and where
+  `lan_cidr` is defined a container may not reach into the LAN (the
+  script is a template for that). An apt.conf
   drop-in adds Docker's origin to unattended-upgrades, which otherwise
   never patches it. `docker_users` is an explicit list because the socket
   is root.

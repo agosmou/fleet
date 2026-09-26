@@ -32,6 +32,20 @@
       Hand-joined? `sudo tailscale up`.
     quiet: true
 
+# The tag is what the tailnet policy (terraform/digitalocean/policy.hujson)
+# knows a machine by. Without it the node counts as one of your devices
+# and may open connections to them, so this stops the run instead of
+# warning. tailscale_tag is set in group_vars/all.yml, per host if needed.
+- name: Assert the node carries its tag
+  ansible.builtin.assert:
+    that:
+      - tailscale_tag in (ts.Self.Tags | default([], true))
+    fail_msg: >-
+      {{ inventory_hostname }} is on the tailnet without {{ tailscale_tag }},
+      so the policy treats it as one of your devices, with access to them.
+      From the workstation: just join {{ inventory_hostname }}
+    quiet: true
+
 # Tagged nodes (cloud-init births) never expire; hand-joined ones do. The
 # zero date is how tailscale reports "expiry disabled".
 - name: Days until key expiry

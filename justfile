@@ -18,6 +18,69 @@ ts_token := "$(curl -fsS -d client_id=\"$TAILSCALE_OAUTH_CLIENT_ID\" -d client_s
 default:
     @just --list --unsorted
 
+# ---- Everyday: the same verbs as environment ---------------------------------
+# sync, check, apply, update, doctor mean what they mean in ~/environment,
+# applied to the fleet instead of to this machine: the tailnet policy and
+# the droplets (terraform), then every host's configuration (ansible).
+
+# Bring the fleet up to date: pull, show every change, ask once, apply it all, then doctor
+sync:
+    @cd "{{repo}}" && if git diff --quiet && git diff --cached --quiet; then git pull --ff-only; else echo "local changes present; not pulling"; fi
+    cd "{{tf}}" && tofu init -input=false >/dev/null && tofu plan -out=sync.tfplan
+    just online
+    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --check --diff
+    @read -rp "Apply all of the above? [y/N] " a; [[ "$a" == [yY] ]] || { rm -f "{{tf}}/sync.tfplan"; echo "nothing applied"; exit 1; }
+    cd "{{tf}}" && tofu apply sync.tfplan && rm -f sync.tfplan
+    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --diff
+    just doctor
+
+# Dry run of everything, changes nothing: terraform's plan, then who is online and what ansible would change. `just check -l spectre` for one host
+check *ARGS: plan online
+    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --check --diff {{ARGS}}
+
+# A machine that still asks for a sudo password (built by hand, never
+# converged): add -K once; roles/base then makes sudo passwordless.
+# Apply everything: terraform (asks when there is a change), then every host, or `just apply -l NAME` for one
+apply *ARGS:
+    cd "{{tf}}" && tofu init -input=false >/dev/null && tofu apply
+    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --diff {{ARGS}}
+
+# Update flake.lock (the tools) and the terraform provider lock to the newest versions. Then check, apply, commit both
+update:
+    @token="$(gh auth token 2>/dev/null)"; [[ -n "$token" ]] || { echo "no GitHub token; run: gh auth login" >&2; exit 1; }
+    nix flake update --flake "{{repo}}" --option access-tokens "github.com=$(gh auth token)"
+    cd "{{tf}}" && tofu init -upgrade -input=false >/dev/null && echo "terraform providers: .terraform.lock.hcl updated"
+
+# Compare the fleet against the repository: this workstation can run it, and every host is on the tailnet with its tag. No ssh
+doctor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fails=0
+    ok()   { printf 'ok    %s\n' "$1"; }
+    look() { printf 'look  %s\n' "$1"; }
+    bad()  { printf 'FAIL  %s\n' "$1"; fails=1; }
+    [[ -f "{{repo}}/secrets.env" ]] && ok "secrets.env present" \
+      || bad "secrets.env missing: cp secrets.env.example secrets.env, values from Bitwarden"
+    [[ -f "{{tf}}/terraform.tfstate" ]] && ok "terraform state present" \
+      || look "no terraform state here; plan/up would start from nothing. Run fleet from the workstation that has it"
+    status="$(tailscale status --json)"
+    cd "{{ansible_dir}}"
+    # tailscale_tag per host comes from the inventory (group_vars/all.yml,
+    # overridden per host), the same value roles/tailscale asserts.
+    while IFS=$'\t' read -r host tag; do
+      node="$(jq -c --arg h "$host" '[.Self, (.Peer // {} | .[])] | map(select(.HostName == $h)) | .[0]' <<<"$status")"
+      if [[ "$node" == null ]]; then
+        bad "$host is not on the tailnet (new or reinstalled? just join $host)"; continue
+      fi
+      if jq -e --arg t "$tag" '(.Tags // []) | index($t)' <<<"$node" >/dev/null; then
+        ok "$host carries $tag"
+      else
+        bad "$host is on the tailnet without $tag, so the policy treats it as one of your devices. Fix: just join $host"
+      fi
+      [[ "$(jq -r .Online <<<"$node")" == true ]] && ok "$host online" || look "$host offline"
+    done < <(ansible-inventory --list | jq -r '._meta.hostvars | to_entries[] | [.key, (.value.tailscale_tag // "tag:server")] | @tsv')
+    exit "$fails"
+
 # ---- The whole thing --------------------------------------------------------
 
 # Birth to ready: create what terraform.tfvars describes, then configure NAME and give it the environment
@@ -51,11 +114,20 @@ acl-pull:
     cd "{{tf}}" && tofu import tailscale_acl.policy acl
     @echo "policy.hujson is now the live policy. Add tag:server under tagOwners if missing, then: just plan"
 
-# Mint a single-use tag:server birth key (1 h) for a machine terraform does not create, e.g. a Pi's SD card
-key NAME:
+# Mint a single-use birth key (1 h) carrying TAG for a machine terraform does not create, e.g. a Pi's SD card
+key NAME TAG="tag:server":
     @curl -fsS -H "Authorization: Bearer {{ts_token}}" -H "Content-Type: application/json" \
-      -d '{"description":"fleet birth key for {{NAME}}","expirySeconds":3600,"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["tag:server"]}}}}' \
+      -d '{"description":"fleet birth key for {{NAME}}","expirySeconds":3600,"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["{{TAG}}"]}}}}' \
       "{{ts_api}}/tailnet/-/keys" | jq -r .key
+
+# Put NAME on the tailnet as a machine (TAG, default tag:server): a Pi, or spectre after a reinstall. Prints the one command to run on it
+join NAME TAG="tag:server":
+    @key="$(just key {{NAME}} {{TAG}})"; \
+    printf '\nOn %s, within the hour (the key is single-use):\n\n' "{{NAME}}"; \
+    printf '  curl -fsSL https://tailscale.com/install.sh | sh        # only if tailscale is missing\n'; \
+    printf '  sudo tailscale up --reset --force-reauth --hostname=%s --auth-key=%s\n\n' "{{NAME}}" "$key"; \
+    printf 'It joins as %s, never as one of your devices. Then here:\n\n' "{{TAG}}"; \
+    printf '  just apply -l %s && just env %s && just doctor\n\n' "{{NAME}}" "{{NAME}}"
 
 # Remove NAME's node from the tailnet (so the next NAME is not NAME-1) and its ssh host key here. Needs the Devices scope
 forget NAME:
@@ -102,15 +174,7 @@ status HOST:
 ping *ARGS:
     cd "{{ansible_dir}}" && ANSIBLE_BECOME=false ansible all -m ping {{ARGS}}
 
-# Dry run: who is online, then what would change. `just check -l spectre` for one host
-check *ARGS: online
-    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --check --diff {{ARGS}}
-
-# Apply the configuration to every host, or `just apply -l NAME` for one.
-# A machine that still asks for a sudo password (built by hand, never
-# converged): add -K once; roles/base then makes sudo passwordless
-apply *ARGS:
-    cd "{{ansible_dir}}" && ansible-playbook {{playbook}} --diff {{ARGS}}
+# check and apply are at the top (Everyday): terraform, then these hosts.
 
 # ---- User layer: ~/environment ----------------------------------------------
 
